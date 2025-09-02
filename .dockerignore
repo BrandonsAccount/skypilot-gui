@@ -1,0 +1,16 @@
+# Ignore local dev artifacts
+node_modules
+.next/cache
+.next/trace
+.next/static/**/*.map
+npm-debug.log
+yarn-error.log
+pnpm-lock.yaml
+*.local
+.env*
+!.env.example
+.DS_Store
+.git
+.gitignore
+.vscode
+.idea

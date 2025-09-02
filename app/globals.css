@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ChatGPT-like dark theme */
+:root { color-scheme: dark; }
+
+html, body, #__next { height: 100%; }
+
+body {
+  @apply bg-[#343541] text-white antialiased;
+}
+
+/* Layout helpers */
+.container { @apply mx-auto max-w-3xl p-4; }
+
+/* Components (dark variants) */
+.card {
+  @apply bg-[#444654] border border-white/10 rounded-2xl p-4 shadow-none;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center rounded-xl px-4 py-2
+         bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[.99]
+         disabled:opacity-50 disabled:cursor-not-allowed;
+  /* remove light borders/backgrounds */
+}
+
+.input {
+  @apply w-full rounded-2xl border border-white/10
+         bg-[#40414f] text-white placeholder-zinc-400
+         px-3 py-2 focus:outline-none focus:ring-0 focus:border-white/20;
+}
+
+.badge {
+  @apply text-xs px-2 py-1 rounded-full bg-white/10 text-white;
+}
