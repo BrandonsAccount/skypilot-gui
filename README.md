@@ -3,16 +3,11 @@
 
 ## A web-based chat interface for SkyPilot MCP.
 
-
----
-
 ## Design concepts
 - **Security context:** Keep tokens and policy **server-side** (BFF), enforce security headers, and avoid exposing long‑lived secrets to the browser.
 - **12-Factor ready:** Config via env, stateless processes, logging to stdout, strict separation of build and run stages.
 - **Auth on a switch:** Use OIDC (Authorization Code + PKCE via Auth.js/NextAuth) when you’re ready. Disabled by default so you can bootstrap fast.
 - **Messenger-first:** The BFF **POSTs** your chat payloads to **`MESSENGER_URL`** (with optional bearer). The Messenger can call FastAPI/LLM/etc.
-
----
 
 ## Quick Start
 
@@ -28,7 +23,7 @@ npm run dev
 # open http://localhost:3000
 ```
 
-### Enable Auth (later)
+## Enable Auth (later)
 Out-of-the-box you can run the UI without auth and without a live Messenger by using the built-in dev echo fallback. Flip `AUTH_ENABLED=true` and point `MESSENGER_URL` to your service when ready.
 
 
@@ -44,7 +39,7 @@ Out-of-the-box you can run the UI without auth and without a live Messenger by u
 3. Add your Messenger to the CSP `connect-src` and `ALLOWLIST` in the env and Next config if needed.
 4. Restart `npm run dev`.
 
-### Point to SkyPilot Messenger
+## Point to SkyPilot Messenger
 
 Set:
 ```ini
@@ -62,8 +57,6 @@ ALLOWLIST=messenger.example.com:443
 > ```
 > If `MESSENGER_SUPPORTS_STREAM=true`, the BFF sets `Accept: text/event-stream` and will proxy a streamed text body back to the browser. Otherwise it expects JSON `{ "reply": "..." }`.
 
----
-
 ## Architecture
 
 **Browser ⇄ Next.js (BFF) ⇄ Messenger Service ⇄ FastAPI/LLM**
@@ -71,8 +64,6 @@ ALLOWLIST=messenger.example.com:443
 - **BFF route** `/api/chat`: validates input, adds user context (if auth enabled), and calls `MESSENGER_URL` with a short‑lived server credential.
 - **No browser tokens:** Access/refresh tokens are never exposed to JS; the app uses HTTP‑only cookies for the session.
 - **Streaming:** If your Messenger streams (SSE/chunked), the BFF pipes it back to the client.
-
----
 
 ## Security Notes (friendly defaults)
 
@@ -82,8 +73,6 @@ ALLOWLIST=messenger.example.com:443
 - **Allowlist**: `lib/http.ts` blocks calls to non-allowlisted upstreams to reduce SSRF risk.
 - **Cookies**: HTTP-only, `Secure`, `SameSite=Strict` when deployed behind HTTPS.
 - **Secrets**: Never stored client-side. All secrets come from env.
-
----
 
 ## Project Structure
 
@@ -103,15 +92,11 @@ lib/
 app/globals.css             # Tailwind base styles
 middleware.ts               # Optional guard (only when AUTH_ENABLED=true)
 ```
-
----
-
 ## Mocking & Local Dev
 
 - No Messenger running? Leave `MESSENGER_URL` unset or point it at localhost and keep `MESSENGER_SUPPORTS_STREAM=false`. The BFF has a **dev echo fallback** so you can test the UI.
 - To fully test streaming, run any local HTTP server that streams text, and set `MESSENGER_SUPPORTS_STREAM=true`.
 
----
 
 ## Deployment
 
@@ -119,13 +104,9 @@ middleware.ts               # Optional guard (only when AUTH_ENABLED=true)
 - Ensure your platform injects `NEXTAUTH_SECRET` and IdP secrets.
 - Update `connect-src` CSP for production hosts and terminate TLS upstream.
 
----
-
 ## License
 
 MIT — use freely, harden for your environment.
-
----
 
 ## Running in Docker
 
@@ -149,7 +130,6 @@ Visit [http://localhost:3000](http://localhost:3000).
 
 > **Note:** In production, ensure `NODE_ENV=production`, and mount any required secrets/config via environment variables.
 
----
 
 ## Container Build & Run
 
