@@ -18,7 +18,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <div className="container">
           <header className="flex items-center justify-between mb-4">
-            <div className="font-semibold">SkyPilot <img src="/img/favicon-32x32.png" /></div>
+            <div className="font-semibold">SkyPilot <img src="/img/skypilot.png" /></div>
             <div className="space-x-2">
               <span className="badge">Auth: {String(config.authEnabled)}</span>
             </div>

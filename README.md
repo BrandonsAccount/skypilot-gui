@@ -139,16 +139,13 @@ This project ships with a production-ready **multi-stage Dockerfile** that runs 
 
 ```bash
 # From repo root
-docker build -t nextjs-chat-bff:latest .
+docker build --no-cache -t skypilot-gui .
 ```
 
 ### Run (no auth; dev echo fallback)
 
 ```bash
-docker run --rm -p 3000:3000 \
-  -e AUTH_ENABLED=false \
-  -e ALLOWLIST=localhost:9000 \
-  nextjs-chat-bff:latest
+docker run --rm -p 3000:3000 --env-file conf/.env.local --network skypilot --name skypilot-gui skypilot-gui
 # open http://localhost:3000
 ```
 
