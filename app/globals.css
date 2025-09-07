@@ -34,3 +34,35 @@ body {
 .badge {
   @apply text-xs px-2 py-1 rounded-full bg-white/10 text-white;
 }
+
+/* Sidebar specifics (overlay + column) */
+aside {
+  /* ensure the sidebar uses the darker ChatGPT panel color and full height */
+  background-color: #111318;
+}
+
+/* Make truncation consistent where we rely on it
+   Avoid using `@apply truncate` here to prevent PostCSS/Tailwind circular dependency.
+   Provide the equivalent CSS directly. */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* fine-tune scrollbar for the sidebar (subtle) */
+aside ::-webkit-scrollbar {
+  width: 8px;
+}
+aside ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.06);
+  border-radius: 8px;
+}
+
+/* mobile overlay/backdrop helper already used by Sidebar component;
+   keep transitions smooth on small screens */
+@media (max-width: 767px) {
+  .sidebar-overlay {
+    transition: opacity 200ms ease, visibility 200ms ease;
+  }
+}

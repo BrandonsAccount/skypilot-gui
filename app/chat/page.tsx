@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Message } from "@/lib/types";
+import { usePrompt } from "../components/PromptProvider";
 
 type LLMReply = {
   answer: string;
@@ -14,7 +15,8 @@ type UiMessage = Message & { raw?: LLMReply };
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<UiMessage[]>([]);
-  const [input, setInput] = useState("");
+  // use shared input from context (populated by Sidebar clicks)
+  const { input, setInput, addRecent } = usePrompt();
   const [busy, setBusy] = useState(false);
   const scroller = useRef<HTMLDivElement | null>(null);
 
@@ -26,6 +28,14 @@ export default function ChatPage() {
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
+
+    // Persist recent prompt before clearing input
+    try {
+      addRecent({ title: undefined, body: text });
+    } catch {
+      // ignore persistence errors
+    }
+
     setInput("");
     setBusy(true);
 
@@ -85,14 +95,11 @@ export default function ChatPage() {
           ref={scroller}
           className="mx-auto w-full max-w-3xl px-4 py-6 space-y-4 overflow-y-auto pb-28"
         >
-
-
           {messages.length === 0 && (
             <div className="rounded-lg border border-white/10 bg-[#212121] p-4 text-sm text-zinc-200">
               Message SkyPilot to get started.
             </div>
           )}
-
 
           {messages.map((m, i) => {
             const isUser = m.role === "user";
@@ -118,7 +125,7 @@ export default function ChatPage() {
                       <summary className="cursor-pointer text-sm text-zinc-300 hover:opacity-80">
                         Show JSON details
                       </summary>
-                      <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-[#0b1020] p-3 text-xs text-zinc-100">
+                      <pre className="mt-2 max-h-64 overflow-auto rounded-md bg-[#111318] p-3 text-xs text-zinc-100">
                         <code>{JSON.stringify(m.raw, null, 2)}</code>
                       </pre>
                     </details>
@@ -135,6 +142,7 @@ export default function ChatPage() {
         <div className="mx-auto w-full max-w-3xl px-4 py-4">
           <div className="relative">
             <textarea
+              // Now bound to the shared input state from PromptProvider
               className="min-h-[44px] max-h-40 w-full resize-none rounded-2xl border border-white/10 bg-[#303030] px-4 py-3 pr-12 text-[15px] text-white placeholder-zinc-400 outline-none focus:border-white/20"
               placeholder="Message SkyPilot…"
               value={input}
@@ -151,8 +159,6 @@ export default function ChatPage() {
               ➤
             </button>
           </div>
-          {/* helper text row (optional) */}
-          {/* <div className="mt-2 text-xs text-zinc-400">SkyPilot can make mistakes. Check important info.</div> */}
         </div>
       </div>
     </div>
