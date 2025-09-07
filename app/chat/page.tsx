@@ -78,32 +78,39 @@ export default function ChatPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#343541] text-white flex flex-col">
+    <div className="min-h-screen bg-[#212121] text-white flex flex-col">
       {/* Scrollable chat area */}
       <main className="flex-1">
         <div
           ref={scroller}
           className="mx-auto w-full max-w-3xl px-4 py-6 space-y-4 overflow-y-auto pb-28"
         >
+
+
           {messages.length === 0 && (
-            <div className="rounded-lg border border-white/10 bg-[#444654] p-4 text-sm text-zinc-200">
+            <div className="rounded-lg border border-white/10 bg-[#212121] p-4 text-sm text-zinc-200">
               Message SkyPilot to get started.
             </div>
           )}
 
+
           {messages.map((m, i) => {
             const isUser = m.role === "user";
+            const displayContent = isUser && m.content.length > 50
+              ? `${m.content.substring(0, 50)}...`
+              : m.content;
+
             return (
               <div key={i} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                 <div
                   className={[
                     "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-[15px] leading-relaxed",
                     isUser
-                      ? "bg-[#343541] border border-white/10 text-zinc-100"
-                      : "bg-[#444654] text-zinc-100",
+                      ? "bg-[#212121] border border-white/10 text-zinc-100"
+                      : "bg-[#171717] text-zinc-100",
                   ].join(" ")}
                 >
-                  {m.content}
+                  {displayContent}
 
                   {/* Expand/collapse JSON details under assistant replies */}
                   {m.role === "assistant" && m.raw && (
@@ -124,11 +131,11 @@ export default function ChatPage() {
       </main>
 
       {/* Bottom composer (fixed) */}
-      <div className="sticky bottom-0 inset-x-0 border-t border-white/10 bg-gradient-to-t from-[#343541] to-[#343541]/80">
+      <div className="sticky bottom-0 inset-x-0 border-t border-white/10 bg-gradient-to-t from-[#212121] to-[#212121]">
         <div className="mx-auto w-full max-w-3xl px-4 py-4">
           <div className="relative">
             <textarea
-              className="min-h-[44px] max-h-40 w-full resize-none rounded-2xl border border-white/10 bg-[#40414f] px-4 py-3 pr-12 text-[15px] text-white placeholder-zinc-400 outline-none focus:border-white/20"
+              className="min-h-[44px] max-h-40 w-full resize-none rounded-2xl border border-white/10 bg-[#303030] px-4 py-3 pr-12 text-[15px] text-white placeholder-zinc-400 outline-none focus:border-white/20"
               placeholder="Message SkyPilot…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -139,7 +146,7 @@ export default function ChatPage() {
               aria-label="Send"
               onClick={send}
               disabled={busy || !input.trim()}
-              className="absolute right-2 bottom-2 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:opacity-40"
+              className="absolute right-2 bottom-6 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:opacity-40"
             >
               ➤
             </button>

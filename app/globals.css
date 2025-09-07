@@ -8,7 +8,7 @@
 html, body, #__next { height: 100%; }
 
 body {
-  @apply bg-[#343541] text-white antialiased;
+  @apply bg-[#212121] text-white antialiased;
 }
 
 /* Layout helpers */
@@ -16,14 +16,13 @@ body {
 
 /* Components (dark variants) */
 .card {
-  @apply bg-[#444654] border border-white/10 rounded-2xl p-4 shadow-none;
+  @apply bg-[#303030] border border-white/10 rounded-2xl p-4 shadow-none;
 }
 
 .btn {
   @apply inline-flex items-center justify-center rounded-xl px-4 py-2
          bg-emerald-600 text-white hover:bg-emerald-700 active:scale-[.99]
          disabled:opacity-50 disabled:cursor-not-allowed;
-  /* remove light borders/backgrounds */
 }
 
 .input {
