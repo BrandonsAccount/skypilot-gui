@@ -2,6 +2,7 @@
 <!-- https://raw.githubusercontent.com/brandonsaccount/skypilot-gui/poc/ -->
 
 ## A web-based chat interface for SkyPilot MCP.
+<img src="public/img/screenshot.png" height="400">
 
 ## Design concepts
 - **Security context:** Keep tokens and policy **server-side** (BFF), enforce security headers, and avoid exposing long‑lived secrets to the browser.
