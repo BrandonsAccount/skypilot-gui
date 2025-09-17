@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import 'highlight.js/styles/github-dark.css';
 
 /* ChatGPT-like dark theme */
 :root { color-scheme: dark; }

@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Message } from "@/lib/types";
 import { usePrompt } from "../components/PromptProvider";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
 
 type LLMReply = {
   answer: string;
@@ -12,6 +15,85 @@ type LLMReply = {
   debug: { reasoning: string };
 };
 
+// Components typed with `Components`; use className to detect blocks
+const markdownComponents: Components = {
+  p({ node, ...props }) {
+    return <p {...props} className="mb-3 last:mb-0" />;
+  },
+  code(props) {
+    const { children, className, ...rest } = props as {
+      children?: React.ReactNode;
+      className?: string;
+    };
+    const isBlock = typeof className === "string" && /(^|\s)language-/.test(className);
+
+    if (!isBlock) {
+      // inline code
+      return (
+        <code
+          {...rest}
+          className={["rounded bg-white/10 px-1 py-0.5 text-[0.95em]", className]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          {children}
+        </code>
+      );
+    }
+    // fenced / block code
+    return (
+      <code {...rest} className={["block", className].filter(Boolean).join(" ")}>
+        {children}
+      </code>
+    );
+  },
+  a({ node, ...props }) {
+    return (
+      <a
+        {...props}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="underline decoration-emerald-500 hover:opacity-80"
+      />
+    );
+  },
+  ul({ node, ...props }) {
+    return <ul {...props} className="list-disc pl-5 my-3 space-y-1" />;
+  },
+  ol({ node, ...props }) {
+    return <ol {...props} className="list-decimal pl-5 my-3 space-y-1" />;
+  },
+  table({ node, ...props }) {
+    return (
+      <div className="overflow-x-auto">
+        <table {...props} className="w-full border-separate border-spacing-0" />
+      </div>
+    );
+  },
+  th({ node, ...props }) {
+    return <th {...props} className="border-b border-white/10 px-3 py-2 text-left font-semibold" />;
+  },
+  td({ node, ...props }) {
+    return <td {...props} className="border-b border-white/5 px-3 py-2 align-top" />;
+  },
+};
+
+function MarkdownMessage({ text }: { text: string }) {
+  return (
+    <div className="prose prose-invert max-w-none prose-pre:overflow-auto prose-pre:rounded-xl prose-code:before:content-[''] prose-code:after:content-['']">
+      <ReactMarkdown
+        // Casts quiet overly strict plugin types; safe to remove if your @types match.
+        remarkPlugins={[remarkGfm as any]}
+        rehypePlugins={[rehypeHighlight as any]}
+        components={markdownComponents}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+
 function parseMaybeJSON<T = unknown>(v: unknown): T | null {
   if (v && typeof v === "string") {
     try {
@@ -20,16 +102,14 @@ function parseMaybeJSON<T = unknown>(v: unknown): T | null {
       return null;
     }
   }
-  return (typeof v === "object" && v !== null ? (v as T) : null);
+  return typeof v === "object" && v !== null ? (v as T) : null;
 }
-
 
 // raw can be the full message object returned by messenger, so use any
 type UiMessage = Message & { raw?: any };
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<UiMessage[]>([]);
-  // use shared input from context (populated by Sidebar clicks)
   const { input, setInput, addRecent } = usePrompt();
   const [busy, setBusy] = useState(false);
   const scroller = useRef<HTMLDivElement | null>(null);
@@ -43,12 +123,9 @@ export default function ChatPage() {
     const text = input.trim();
     if (!text || busy) return;
 
-    // Persist recent prompt before clearing input
     try {
       addRecent({ title: undefined, body: text });
-    } catch {
-      // ignore persistence errors
-    }
+    } catch {}
 
     setInput("");
     setBusy(true);
@@ -83,10 +160,8 @@ export default function ChatPage() {
           });
         }
       } else {
-        // Strict: expect { conversation: [...] } and the final system message to be a JSON-RPC envelope
         const data = await res.json();
 
-        // 1) Require a conversation array
         if (!data || !Array.isArray(data.conversation)) {
           throw new Error("Invalid response: missing conversation array");
         }
@@ -94,7 +169,6 @@ export default function ChatPage() {
           throw new Error("Invalid response: empty conversation array");
         }
 
-        // 2) Find the most recent system message (from end)
         let systemEntry: any | null = null;
         for (let i = data.conversation.length - 1; i >= 0; i--) {
           const entry = data.conversation[i];
@@ -103,28 +177,21 @@ export default function ChatPage() {
             break;
           }
         }
-        if (!systemEntry) {
-          throw new Error("No system message found in conversation");
-        }
+        if (!systemEntry) throw new Error("No system message found in conversation");
 
-        // 3) systemEntry.content must be a JSON-RPC envelope (stringified JSON or object)
         const contentObj = parseMaybeJSON<any>(systemEntry.content);
         if (!contentObj || typeof contentObj !== "object") {
           throw new Error("System message content is missing or not valid JSON/object");
         }
-
-        // 4) Validate JSON-RPC envelope
         if (contentObj.jsonrpc !== "2.0" || !contentObj.result || typeof contentObj.result !== "object") {
           throw new Error("System message is not a valid JSON-RPC envelope with a result");
         }
 
-        // 5) Require result.answer (string)
         const rpcResult = contentObj.result;
         if (typeof rpcResult.answer !== "string") {
           throw new Error("Result.answer missing or not a string");
         }
 
-        // 6) Use the answer; keep the full payload for 'Show JSON details'
         const answer: string = rpcResult.answer;
         const rawFullMessage = data;
 
@@ -134,7 +201,6 @@ export default function ChatPage() {
         ]);
       }
     } catch (e: any) {
-      // Surface a concise error in the assistant bubble
       setMessages((prev) => [
         ...prev.slice(0, -1),
         { role: "assistant", content: `Error parsing response: ${e.message}` },
@@ -160,23 +226,25 @@ export default function ChatPage() {
 
           {messages.map((m, i) => {
             const isUser = m.role === "user";
-            const displayContent = isUser && m.content.length > 50
-              ? `${m.content.substring(0, 50)}...`
-              : m.content;
+            const displayContent =
+              isUser && m.content.length > 50 ? `${m.content.substring(0, 50)}...` : m.content;
 
             return (
               <div key={i} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                 <div
                   className={[
-                    "max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-[15px] leading-relaxed",
+                    "max-w-[85%] rounded-2xl px-4 py-3 text-[15px] leading-relaxed",
                     isUser
                       ? "bg-[#212121] border border-white/10 text-zinc-100"
                       : "bg-[#171717] text-zinc-100",
                   ].join(" ")}
                 >
-                  {displayContent}
+                  {isUser ? (
+                    <div className="whitespace-pre-wrap">{displayContent}</div>
+                  ) : (
+                    <MarkdownMessage text={m.content} />
+                  )}
 
-                  {/* Expand/collapse JSON details under assistant replies */}
                   {m.role === "assistant" && m.raw && (
                     <details className="mt-3">
                       <summary className="cursor-pointer text-sm text-zinc-300 hover:opacity-80">
@@ -199,7 +267,6 @@ export default function ChatPage() {
         <div className="mx-auto w-full max-w-3xl px-4 py-4">
           <div className="relative">
             <textarea
-              // Now bound to the shared input state from PromptProvider
               className="min-h-[44px] max-h-40 w-full resize-none rounded-2xl border border-white/10 bg-[#303030] px-4 py-3 pr-12 text-[15px] text-white placeholder-zinc-400 outline-none focus:border-white/20"
               placeholder="Message SkyPilot…"
               value={input}
