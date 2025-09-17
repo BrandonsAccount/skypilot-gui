@@ -11,7 +11,21 @@ type LLMReply = {
   actions: { tool: string; input: Record<string, unknown> }[];
   debug: { reasoning: string };
 };
-type UiMessage = Message & { raw?: LLMReply };
+
+function parseMaybeJSON<T = unknown>(v: unknown): T | null {
+  if (v && typeof v === "string") {
+    try {
+      return JSON.parse(v) as T;
+    } catch {
+      return null;
+    }
+  }
+  return (typeof v === "object" && v !== null ? (v as T) : null);
+}
+
+
+// raw can be the full message object returned by messenger, so use any
+type UiMessage = Message & { raw?: any };
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<UiMessage[]>([]);
@@ -69,18 +83,61 @@ export default function ChatPage() {
           });
         }
       } else {
-        const data = (await res.json()) as LLMReply | { reply?: string };
-        const answer = "answer" in data ? data.answer : (data.reply ?? "");
-        const raw: LLMReply | undefined = "answer" in data ? (data as LLMReply) : undefined;
+        // Strict: expect { conversation: [...] } and the final system message to be a JSON-RPC envelope
+        const data = await res.json();
+
+        // 1) Require a conversation array
+        if (!data || !Array.isArray(data.conversation)) {
+          throw new Error("Invalid response: missing conversation array");
+        }
+        if (data.conversation.length === 0) {
+          throw new Error("Invalid response: empty conversation array");
+        }
+
+        // 2) Find the most recent system message (from end)
+        let systemEntry: any | null = null;
+        for (let i = data.conversation.length - 1; i >= 0; i--) {
+          const entry = data.conversation[i];
+          if (entry && entry.role === "system") {
+            systemEntry = entry;
+            break;
+          }
+        }
+        if (!systemEntry) {
+          throw new Error("No system message found in conversation");
+        }
+
+        // 3) systemEntry.content must be a JSON-RPC envelope (stringified JSON or object)
+        const contentObj = parseMaybeJSON<any>(systemEntry.content);
+        if (!contentObj || typeof contentObj !== "object") {
+          throw new Error("System message content is missing or not valid JSON/object");
+        }
+
+        // 4) Validate JSON-RPC envelope
+        if (contentObj.jsonrpc !== "2.0" || !contentObj.result || typeof contentObj.result !== "object") {
+          throw new Error("System message is not a valid JSON-RPC envelope with a result");
+        }
+
+        // 5) Require result.answer (string)
+        const rpcResult = contentObj.result;
+        if (typeof rpcResult.answer !== "string") {
+          throw new Error("Result.answer missing or not a string");
+        }
+
+        // 6) Use the answer; keep the full payload for 'Show JSON details'
+        const answer: string = rpcResult.answer;
+        const rawFullMessage = data;
+
         setMessages((prev) => [
           ...prev.slice(0, -1),
-          { role: "assistant", content: answer, raw },
+          { role: "assistant", content: answer, raw: rawFullMessage },
         ]);
       }
     } catch (e: any) {
+      // Surface a concise error in the assistant bubble
       setMessages((prev) => [
         ...prev.slice(0, -1),
-        { role: "assistant", content: `Error: ${e.message}` },
+        { role: "assistant", content: `Error parsing response: ${e.message}` },
       ]);
     } finally {
       setBusy(false);
