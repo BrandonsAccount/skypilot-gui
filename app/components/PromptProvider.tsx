@@ -19,9 +19,8 @@ type PromptContextType = {
 };
 
 const PromptContext = createContext<PromptContextType | undefined>(undefined);
-
 const LOCAL_KEY = "skypilot:recent_prompts";
-const RECENT_MAX = 10;
+const RECENT_MAX = 5;
 
 // Example set of common prompts: short title + full body
 const COMMON_PROMPTS: Prompt[] = [

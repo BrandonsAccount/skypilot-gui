@@ -1,4 +1,14 @@
+// app/chat/ChatPage.tsx
 "use client";
+
+/**
+ * ChatPage
+ * - Renders a simple chat UI.
+ * - Sends messages to /api/chat.
+ * - Supports two server response modes:
+ *   (A) streaming text (Content-Type starts with "text/")
+ *   (B) JSON envelope containing a JSON-RPC result with `answer`.
+ */
 
 import { useEffect, useRef, useState } from "react";
 import type { Message } from "@/lib/types";
@@ -7,17 +17,9 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 
-type LLMReply = {
-  answer: string;
-  confidence: number;
-  citations: string[];
-  actions: { tool: string; input: Record<string, unknown> }[];
-  debug: { reasoning: string };
-};
-
-// Components typed with `Components`; use className to detect blocks
+/** Markdown renderers; keep `node` param in signature but mark unused for type compat */
 const markdownComponents: Components = {
-  p({ node, ...props }) {
+  p({ node: _node, ...props }) {
     return <p {...props} className="mb-3 last:mb-0" />;
   },
   code(props) {
@@ -26,9 +28,8 @@ const markdownComponents: Components = {
       className?: string;
     };
     const isBlock = typeof className === "string" && /(^|\s)language-/.test(className);
-
     if (!isBlock) {
-      // inline code
+      // Inline code uses a subtle bg; fenced blocks rely on rehype-highlight.
       return (
         <code
           {...rest}
@@ -40,14 +41,13 @@ const markdownComponents: Components = {
         </code>
       );
     }
-    // fenced / block code
     return (
       <code {...rest} className={["block", className].filter(Boolean).join(" ")}>
         {children}
       </code>
     );
   },
-  a({ node, ...props }) {
+  a({ node: _node, ...props }) {
     return (
       <a
         {...props}
@@ -57,32 +57,34 @@ const markdownComponents: Components = {
       />
     );
   },
-  ul({ node, ...props }) {
+  ul({ node: _node, ...props }) {
     return <ul {...props} className="list-disc pl-5 my-3 space-y-1" />;
   },
-  ol({ node, ...props }) {
+  ol({ node: _node, ...props }) {
     return <ol {...props} className="list-decimal pl-5 my-3 space-y-1" />;
   },
-  table({ node, ...props }) {
+  table({ node: _node, ...props }) {
     return (
       <div className="overflow-x-auto">
         <table {...props} className="w-full border-separate border-spacing-0" />
       </div>
     );
   },
-  th({ node, ...props }) {
+  th({ node: _node, ...props }) {
     return <th {...props} className="border-b border-white/10 px-3 py-2 text-left font-semibold" />;
   },
-  td({ node, ...props }) {
+  td({ node: _node, ...props }) {
     return <td {...props} className="border-b border-white/5 px-3 py-2 align-top" />;
   },
 };
 
+/** Lightweight Markdown wrapper.
+ *  Why the `as any`: plugin typings often lag; this avoids friction.
+ */
 function MarkdownMessage({ text }: { text: string }) {
   return (
     <div className="prose prose-invert max-w-none prose-pre:overflow-auto prose-pre:rounded-xl prose-code:before:content-[''] prose-code:after:content-['']">
       <ReactMarkdown
-        // Casts quiet overly strict plugin types; safe to remove if your @types match.
         remarkPlugins={[remarkGfm as any]}
         rehypePlugins={[rehypeHighlight as any]}
         components={markdownComponents}
@@ -93,20 +95,41 @@ function MarkdownMessage({ text }: { text: string }) {
   );
 }
 
-
+/** Parses stringified JSON defensively. */
 function parseMaybeJSON<T = unknown>(v: unknown): T | null {
   if (v && typeof v === "string") {
     try {
       return JSON.parse(v) as T;
     } catch {
-      return null;
+      return null; // why: server-controlled payload
     }
   }
   return typeof v === "object" && v !== null ? (v as T) : null;
 }
 
-// raw can be the full message object returned by messenger, so use any
-type UiMessage = Message & { raw?: any };
+type UiMessage = Message & { raw?: unknown };
+type ServerConversationEntry = { role?: string; content?: unknown };
+type ServerEnvelope = { conversation?: ServerConversationEntry[] };
+
+function isStreamingContentType(ct: string): boolean {
+  return ct.includes("text/");
+}
+
+/** Finds last system entry to reduce coupling to upstream server ordering choices. */
+function findLastSystemEntry(conversation: ServerConversationEntry[] | undefined) {
+  if (!Array.isArray(conversation) || conversation.length === 0) return null;
+  for (let i = conversation.length - 1; i >= 0; i--) {
+    const e = conversation[i];
+    if (e && e.role === "system") return e;
+  }
+  return null;
+}
+
+/** Appends a streamed chunk to the last assistant message. */
+function appendStreamChunk(prev: UiMessage[], chunk: string): UiMessage[] {
+  const last = prev[prev.length - 1];
+  return [...prev.slice(0, -1), { ...last, content: (last.content || "") + chunk }];
+}
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<UiMessage[]>([]);
@@ -114,12 +137,13 @@ export default function ChatPage() {
   const [busy, setBusy] = useState(false);
   const scroller = useRef<HTMLDivElement | null>(null);
 
+  // Auto-scroll on new messages for typical chat behavior.
   useEffect(() => {
     const el = scroller.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  async function send() {
+  async function sendMessage() {
     const text = input.trim();
     if (!text || busy) return;
 
@@ -127,9 +151,9 @@ export default function ChatPage() {
       addRecent({ title: undefined, body: text });
     } catch {}
 
+    // Optimistic assistant placeholder enables smooth streaming updates.
     setInput("");
     setBusy(true);
-
     const next: UiMessage[] = [
       ...messages,
       { role: "user" as const, content: text },
@@ -147,64 +171,45 @@ export default function ChatPage() {
       if (!res.ok) throw new Error((await res.text()) || `HTTP ${res.status}`);
 
       const ct = res.headers.get("Content-Type") || "";
-      if (ct.includes("text/") || ct.includes("event-stream")) {
+
+      // (A) Streamed text (e.g., SSE) → incrementally append chunks.
+      if (isStreamingContentType(ct)) {
         const reader = res.body?.getReader();
         const decoder = new TextDecoder();
         while (reader) {
           const { done, value } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value, { stream: true });
-          setMessages((prev) => {
-            const last = prev[prev.length - 1];
-            return [...prev.slice(0, -1), { ...last, content: last.content + chunk }];
-          });
+          setMessages((prev) => appendStreamChunk(prev, chunk));
         }
-      } else {
-        const data = await res.json();
-
-        if (!data || !Array.isArray(data.conversation)) {
-          throw new Error("Invalid response: missing conversation array");
-        }
-        if (data.conversation.length === 0) {
-          throw new Error("Invalid response: empty conversation array");
-        }
-
-        let systemEntry: any | null = null;
-        for (let i = data.conversation.length - 1; i >= 0; i--) {
-          const entry = data.conversation[i];
-          if (entry && entry.role === "system") {
-            systemEntry = entry;
-            break;
-          }
-        }
-        if (!systemEntry) throw new Error("No system message found in conversation");
-
-        const contentObj = parseMaybeJSON<any>(systemEntry.content);
-        if (!contentObj || typeof contentObj !== "object") {
-          throw new Error("System message content is missing or not valid JSON/object");
-        }
-        if (contentObj.jsonrpc !== "2.0" || !contentObj.result || typeof contentObj.result !== "object") {
-          throw new Error("System message is not a valid JSON-RPC envelope with a result");
-        }
-
-        const rpcResult = contentObj.result;
-        if (typeof rpcResult.answer !== "string") {
-          throw new Error("Result.answer missing or not a string");
-        }
-
-        const answer: string = rpcResult.answer;
-        const rawFullMessage = data;
-
-        setMessages((prev) => [
-          ...prev.slice(0, -1),
-          { role: "assistant", content: answer, raw: rawFullMessage },
-        ]);
+        return;
       }
-    } catch (e: any) {
-      setMessages((prev) => [
-        ...prev.slice(0, -1),
-        { role: "assistant", content: `Error parsing response: ${e.message}` },
-      ]);
+
+      // (B) JSON envelope → extract answer from last system message (JSON-RPC result).
+      const data = (await res.json()) as ServerEnvelope;
+      if (!data?.conversation || !Array.isArray(data.conversation) || data.conversation.length === 0) {
+        throw new Error("Invalid response: conversation is missing or empty");
+      }
+
+      const systemEntry = findLastSystemEntry(data.conversation);
+      if (!systemEntry) throw new Error("No system message found in conversation");
+
+      const contentObj = parseMaybeJSON<any>(systemEntry.content);
+      if (!contentObj || typeof contentObj !== "object") {
+        throw new Error("System content is missing or not valid JSON/object");
+      }
+      if (contentObj.jsonrpc !== "2.0" || !contentObj.result || typeof contentObj.result !== "object") {
+        throw new Error("System content is not a valid JSON-RPC 2.0 envelope with `result`");
+      }
+
+      const answer = contentObj.result?.answer;
+      if (typeof answer !== "string") throw new Error("Result.answer missing or not a string");
+
+      const rawFullMessage = data as unknown;
+      setMessages((prev) => [...prev.slice(0, -1), { role: "assistant", content: answer, raw: rawFullMessage }]);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      setMessages((prev) => [...prev.slice(0, -1), { role: "assistant", content: `Error parsing response: ${msg}` }]);
     } finally {
       setBusy(false);
     }
@@ -226,8 +231,7 @@ export default function ChatPage() {
 
           {messages.map((m, i) => {
             const isUser = m.role === "user";
-            const displayContent =
-              isUser && m.content.length > 50 ? `${m.content.substring(0, 50)}...` : m.content;
+            const showDebug = m.role === "assistant" && m.raw != null; // why: keep raw unknown but render-safe
 
             return (
               <div key={i} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -240,12 +244,13 @@ export default function ChatPage() {
                   ].join(" ")}
                 >
                   {isUser ? (
-                    <div className="whitespace-pre-wrap">{displayContent}</div>
+                    <div className="whitespace-pre-wrap break-words">{m.content}</div>
                   ) : (
                     <MarkdownMessage text={m.content} />
                   )}
 
-                  {m.role === "assistant" && m.raw && (
+                  {/* Exposes raw server payload for debugging only. */}
+                  {showDebug && (
                     <details className="mt-3">
                       <summary className="cursor-pointer text-sm text-zinc-300 hover:opacity-80">
                         Show JSON details
@@ -271,12 +276,12 @@ export default function ChatPage() {
               placeholder="Message SkyPilot…"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), send())}
+              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && (e.preventDefault(), sendMessage())}
               disabled={busy}
             />
             <button
               aria-label="Send"
-              onClick={send}
+              onClick={sendMessage}
               disabled={busy || !input.trim()}
               className="absolute right-2 bottom-6 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:opacity-40"
             >
